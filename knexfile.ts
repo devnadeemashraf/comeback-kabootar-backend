@@ -1,10 +1,10 @@
-import type { Knex } from "knex";
+import type { Knex } from 'knex';
 
-import { getKnexConfig } from "./src/shared/utils/knex.utils";
+import { getKnexConfig } from './src/shared/utils/knex.utils.js';
 
-const knexConfig: Record<string, Knex.Config> = {
-  development: getKnexConfig("development"),
-  production: getKnexConfig("production"),
-};
+const envs = ['development', 'production'] as const;
+const knexConfig: Record<string, Knex.Config> = Object.fromEntries(
+  envs.map((e) => [e, getKnexConfig(e)]),
+);
 
 export default knexConfig;

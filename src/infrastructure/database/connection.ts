@@ -15,7 +15,6 @@ export function getDatabaseConnection(): Knex {
   return instance;
 }
 
-/** Tear down the pool (SIGTERM or test teardown). */
 export async function destroyDatabaseConnection(): Promise<void> {
   if (instance) {
     await instance.destroy();

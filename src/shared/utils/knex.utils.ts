@@ -39,7 +39,7 @@ function getKnexPoolConfig(env: NodeEnv = 'development'): Knex.PoolConfig {
     min,
     max,
     afterCreate: (conn: unknown, done: (err: Error | null, conn: unknown) => void) => {
-      logger.info('New database connection established');
+      if (config.isDev) logger.debug('New database connection established');
       done(null, conn);
     },
   };
@@ -48,7 +48,7 @@ function getKnexPoolConfig(env: NodeEnv = 'development'): Knex.PoolConfig {
 
 function getKnexMigratorConfig(): Knex.MigratorConfig {
   const base: Knex.MigratorConfig = {
-    directory: path.join(__dirname, 'src/infrastructure/database/migrations'),
+    directory: path.join(process.cwd(), 'src/infrastructure/database/migrations'),
     extension: 'ts',
   };
   return base;

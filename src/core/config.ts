@@ -2,7 +2,6 @@ import 'dotenv/config';
 
 import { z } from 'zod/v4';
 
-import { logger } from '@core/logger';
 import { LOG_LEVEL, NODE_ENV, POSTGRES_SSL_MODE } from '@shared/types/config';
 
 const envSchema = z.object({
@@ -28,7 +27,9 @@ const envSchema = z.object({
 
 const parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {
-  logger.error(z.treeifyError(parsed.error), 'Invalid environment configuration: ');
+  // Logger not available yet (config is loaded before logger); use console for bootstrap errors.
+  // eslint-disable-next-line no-console
+  console.error('Invalid environment configuration:', z.treeifyError(parsed.error));
   process.exit(1);
 }
 
