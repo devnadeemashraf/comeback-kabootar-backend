@@ -23,7 +23,7 @@ function getLoggerTransport(): LoggerTransport | undefined {
       translateTime: 'SYS:standard',
       ignore: 'pid,hostname',
       levelFirst: true,
-      messageFormat: '{levelLabel} | {msg}',
+      messageFormat: '{msg}',
       singleLine: false,
       errorLikeObjectKeys: ['err', 'error'],
     },
