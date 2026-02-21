@@ -134,7 +134,7 @@ _Ensure you have a valid Postgres connection string and Redis URL configured._
 Set up your database tables.
 
 ```bash
-npm run migrate:up
+pnpm migrate
 ```
 
 ### 5. Start the Server
@@ -142,7 +142,7 @@ npm run migrate:up
 Start the Express API in development mode.
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 The server will start on `http://localhost:3000` (or your configured PORT).
