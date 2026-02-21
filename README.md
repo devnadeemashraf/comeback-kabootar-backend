@@ -38,50 +38,201 @@ Kabootar sends automated, batched emails directly from your account, ensuring hi
 
 ## 🏗️ Architecture
 
-This project follows a **Lite Domain-Driven Design (DDD)** approach utilizing **Clean Architecture** principles.
+This backend is a **Modular Monolith** using a **Feature-Sliced, feature-first** layout. It is optimized for high cohesion, low coupling, testability, and long-term scalability (including eventual extraction into microservices).
 
-Instead of heavy OOP (abstract classes and private constructors), this backend relies on a **functional approach** tailored for TypeScript and Express. We use pure functions, interfaces, and native TS utility types to enforce business rules while keeping the codebase fast and idiomatic.
+### Core Philosophy
 
-### The Dependency Rule
+Four invariants hold across the codebase:
 
-Dependencies only point _inward_. The core domain knows nothing about the database, Express, or external APIs.
+1. **Features own behavior** — User-visible capabilities live in feature modules.
+2. **Entities own rules** — Shared business models and invariants live in the entities layer.
+3. **Infrastructure owns side-effects** — Database, OAuth, mail, queues, and other I/O are isolated.
+4. **Nothing bypasses layers** — Dependencies flow in one direction; no folder is “misc,” and every file has a clear architectural role.
 
-1. **Domain Layer:** Interfaces and pure functions. Dictates _what_ the system does.
-2. **Application Layer:** Use cases. Dictates _how_ to coordinate the domain and infrastructure.
-3. **Infrastructure Layer:** Databases, external APIs (Google/MS).
-4. **Interfaces Layer:** Express routes, controllers, and background workers.
+### Dependency Rule
+
+```
+app → processes → features → entities → shared
+                 ↓
+           infrastructure
+```
+
+**Forbidden:**
+
+- Entities importing infrastructure
+- Features importing Express
+- Domain/entities importing Redis or DB clients
+- Controllers (or API handlers) calling the database directly
+
+This can be enforced via ESLint layer boundaries.
 
 ---
 
-## 📂 Folder Structure
+## 📂 Layer-by-Layer Breakdown
+
+### 1. `app/` — Application Shell
+
+**Purpose:** Glue everything together. No business logic.
+
+**Responsibilities:**
+
+- Express setup and server bootstrap
+- Dependency injection (container and bindings)
+- Global middleware (auth, error handling, rate limiting)
+- Route mounting
+
+**What goes here:** `server.ts`, `express.ts`, `router.ts`, `di/` (container, bindings), `middlewares/` (auth, error, rate-limit). Entry point wires the app and calls `listen`. Controllers and use cases are never implemented here.
+
+---
+
+### 2. `processes/` — Cross-Feature Workflows
+
+**Purpose:** Multi-step flows that span more than one feature.
+
+**Examples:** “Run Job → Dispatch emails → Track delivery → Bill / deduct credits → Notify user.”
+
+**What goes here:**
+
+- Orchestration logic
+- Long-running or saga-style flows
+- Coordination between features (e.g. job repo, quota, ledger, notifier)
+- One folder per process (e.g. `job-dispatch/`, `contact-verification/`, `billing-cycle/`)
+
+**Rule:** No inline DB queries. All data access goes through feature or entity contracts (repositories, gateways). Processes call use cases and repositories, not raw Knex or Redis.
+
+---
+
+### 3. `features/` — Business Capabilities
+
+**Purpose:** The heart of the system. Each feature is a bounded unit of user-visible behavior.
+
+**Per-feature layout (template):**
 
 ```text
-src/
-├── domain/                 # 🟢 CORE: Zero external dependencies. Pure TypeScript.
-│   ├── types/              # String unions, branded types (ProviderType, EmailAddress)
-│   ├── entities/           # Data structures representing database state (User, Contact)
-│   └── services/           # Pure functions enforcing business rules (e.g., UserDomain.addCredits)
-│
-├── application/            # 🟡 USE CASES: Orchestrates the flow of data.
-│   ├── use-cases/          # ScheduleJob.ts, ForkTemplate.ts, VerifyContact.ts
-│   └── ports/              # Interfaces for external tools (IEmailService, IUserRepository)
-│
-├── infrastructure/         # 🔵 EXTERNAL: Implementations of the Application ports.
-│   ├── database/           # Knex instance, configuration, and migrations
-│   ├── repositories/       # Postgres implementation of IUserRepository
-│   └── services/           # External API SDKs (GoogleOAuthService, MicrosoftGraphService)
-│
-├── interfaces/             # 🟣 DELIVERY: How the outside world talks to our app.
-│   ├── http/               # Express specific code
-│   │   ├── routes/         # API route definitions
-│   │   ├── controllers/    # Parses requests, calls Use Cases, returns HTTP responses
-│   │   └── middlewares/    # Auth verification, rate limiting, error handling
-│   └── workers/            # BullMQ/Redis queue consumers (e.g., EmailDispatcherWorker)
-│
-├── core/                   # Code needed by the entire application
-└── shared/                 # Code shared acorss different layers
-
+features/<feature-name>/
+├── api/           # HTTP interface (controllers, routes)
+├── model/         # Feature-specific state and domain models
+├── service/       # Use cases (business logic)
+├── contracts/     # Interfaces (repositories, gateways) — no implementations
+├── validators/    # Request/command schemas (e.g. Zod)
+├── tests/
+└── index.ts
 ```
+
+**Folder roles:**
+
+| Folder          | Role                                                                   | Example                                         |
+| --------------- | ---------------------------------------------------------------------- | ----------------------------------------------- |
+| **api/**        | Controllers only. Parse request, call use case, return response.       | `create-job.controller.ts`, `routes.ts`         |
+| **service/**    | Use cases. Orchestrate entities and contracts; contain business rules. | `create-job.usecase.ts`, `pause-job.usecase.ts` |
+| **contracts/**  | Interfaces only (e.g. `JobRepository`, `SchedulerGateway`).            | No implementations here.                        |
+| **model/**      | Feature-level entities, value objects, and domain logic.               | `job.entity.ts`, `job.types.ts`                 |
+| **validators/** | Input validation (Zod/Joi).                                            | `job.schema.ts`                                 |
+
+**Rules:** No Express/DB/OAuth in model or service beyond what’s abstracted behind contracts. Use cases are fully mockable and testable via those contracts.
+
+---
+
+### 4. `entities/` — Core Domain
+
+**Purpose:** Shared business objects and rules used across multiple features.
+
+**What goes here:**
+
+- Business invariants and value objects
+- Shared entity definitions (User, Contact, Company, Template, Job, etc.)
+- Policies and small rule functions that belong to the entity (e.g. verification rules, status transitions)
+
+**Layout idea:** One folder per entity (e.g. `user/`, `contact/`, `company/`, `template/`, `billing/`) with files like `*.entity.ts`, `*.types.ts`, `*.policy.ts` or `*.rules.ts`.
+
+**Rule:** No Express, Redis, OAuth clients, or any infrastructure. Only types, pure functions, and rich domain methods that enforce invariants.
+
+---
+
+### 5. `shared/` — Reusable Primitives
+
+**Purpose:** Code used by many layers without belonging to a single feature or entity.
+
+**What goes here:**
+
+- **types/** — Shared TypeScript types, branded types, enums
+- **errors/** — Custom error classes or error codes
+- **utils/** — Pure helpers (formatting, parsing, etc.)
+- **logger/** — Logging interface or wrapper
+- **crypto/** — Hashing, signing (used by auth/infra)
+- **result/** — Result type and helpers (e.g. `Result<T, E>`)
+- **testing/** — Test utilities, fakes, factories
+
+**Rule:** No business logic that belongs to a feature or entity. No direct dependency on infrastructure; infra may depend on shared.
+
+---
+
+### 6. `infrastructure/` — External Systems
+
+**Purpose:** All side-effects and integrations with the outside world.
+
+**What goes here:**
+
+- **db/** — Knex instance, connection config, and **repositories** (e.g. `job.repo.pg.ts`, `user.repo.pg.ts`) that implement feature/process contracts
+- **oauth/** — Google and Microsoft OAuth clients
+- **mail/** — Email provider (e.g. Gmail API wrapper)
+- **queue/** — BullMQ (or other queue) client
+- **cache/** — Redis or other cache client (optional)
+- **billing/** — Payment provider client (if any)
+
+**Rule:** Implements interfaces defined in `features/*/contracts/` or `processes/`. No business rules; only I/O and mapping to/from domain shapes.
+
+---
+
+### 7. `config/` — Environment & Configuration
+
+**Purpose:** Typed, centralized configuration only.
+
+**What goes here:** `env.ts`, `redis.ts`, `db.ts`, `oauth.ts`, etc. Validation and defaults live here; no business logic.
+
+---
+
+### 8. `migrations/` — Database Migrations
+
+**Purpose:** Versioned schema changes (e.g. Knex migrations). No application logic; only DDL and seed data as needed.
+
+---
+
+## 🔄 Programming Style
+
+A hybrid of OO and functional is recommended:
+
+| Layer          | Style                         |
+| -------------- | ----------------------------- |
+| Entities       | Rich domain objects           |
+| Use cases      | Classes (inject contracts)    |
+| Controllers    | Functions                     |
+| Shared utils   | Pure functions                |
+| Infrastructure | Classes (implement contracts) |
+
+This keeps domain logic explicit and testable without forcing heavy OOP or pure FP across the whole stack.
+
+---
+
+## 🧪 Testing Strategy
+
+- **Unit:** Focus on features (use cases) and entities. Mock contracts and repositories.
+- **Integration:** Real DB and Redis where needed; test repositories and processes.
+- **E2E:** HTTP requests through the app to verify responses and critical flows.
+
+Tests can live under `features/<name>/tests/`, plus top-level `tests/unit/`, `tests/integration/`, and `tests/e2e/` if you prefer a single test tree.
+
+---
+
+## 📦 Dependency Injection
+
+A central container (e.g. `app/di/container.ts`) binds contracts to implementations (e.g. `JobRepository` → `PgJobRepository`, `CreateJobUseCase` with its deps). This keeps features and processes decoupled from infrastructure and makes mocking straightforward in tests.
+
+---
+
+## 📈 Scaling and Extraction
+
+When the monolith outgrows a single deployable unit, feature (or process) modules can be extracted into separate services. Because contracts already define boundaries and infrastructure is isolated, the migration is mostly mechanical: move a feature folder, point its implementations to new runtimes, and expose or call APIs as needed.
 
 ---
 
@@ -91,9 +242,80 @@ src/
 - **Runtime:** Node.js
 - **Framework:** Express.js
 - **Database:** PostgreSQL
-- **Query Builder / Migrations:** Knex.js
-- **Background Jobs:** BullMQ + Redis
+- **Query builder / migrations:** Knex.js
+- **Background jobs:** BullMQ + Redis
 - **Authentication:** JWT + Google/Microsoft OAuth 2.0
+
+---
+
+## 📁 Folder Structure Overview
+
+```text
+src/
+│
+├── app/                    # Application shell: server, Express, DI, global middleware
+│   ├── server.ts
+│   ├── express.ts
+│   ├── router.ts
+│   ├── di/
+│   │   ├── container.ts
+│   │   └── bindings.ts
+│   └── middlewares/
+│       ├── auth.middleware.ts
+│       ├── error.middleware.ts
+│       └── rate-limit.middleware.ts
+│
+├── processes/              # Cross-feature workflows (orchestration, sagas)
+│   ├── job-dispatch/
+│   ├── contact-verification/
+│   └── billing-cycle/
+│
+├── features/               # User-visible capabilities (one folder per feature)
+│   └── <feature-name>/
+│       ├── api/            # Controllers, routes
+│       ├── model/          # Feature entities, types
+│       ├── service/        # Use cases
+│       ├── contracts/      # Repository/gateway interfaces
+│       ├── validators/
+│       ├── tests/
+│       └── index.ts
+│
+├── entities/               # Shared domain models and rules
+│   ├── user/
+│   ├── contact/
+│   ├── company/
+│   ├── template/
+│   └── billing/
+│
+├── shared/                 # Reusable primitives
+│   ├── types/
+│   ├── errors/
+│   ├── utils/
+│   ├── logger/
+│   ├── crypto/
+│   ├── result/
+│   └── testing/
+│
+├── infrastructure/         # External systems and I/O
+│   ├── db/
+│   │   ├── knex.ts
+│   │   └── repositories/
+│   ├── oauth/
+│   ├── mail/
+│   ├── queue/
+│   ├── cache/
+│   └── billing/
+│
+├── config/                 # Environment and typed config
+│   ├── env.ts
+│   ├── redis.ts
+│   ├── db.ts
+│   └── oauth.ts
+│
+└── migrations/             # Knex (or other) migrations
+```
+
+**Entry point:** `src/app/server.ts` — wires the app and calls `listen`; shutdown helpers live in `app/shutdown.ts`.
 
 ---
 
@@ -119,39 +341,31 @@ cd comeback-kabootar-backend
 pnpm install
 ```
 
-### 3. Environment Variables
+### 3. Environment variables
 
-Copy the `.env.example` file and fill in your local details.
+Copy `.env.example` to `.env` and fill in your local values (Postgres, Redis, OAuth, etc.).
 
 ```bash
 cp .env.example .env
 ```
 
-_Ensure you have a valid Postgres connection string and Redis URL configured._
-
-### 4. Run Migrations
-
-Set up your database tables.
+### 4. Run migrations
 
 ```bash
 pnpm migrate
 ```
 
-### 5. Start the Server
-
-Start the Express API in development mode.
+### 5. Start the server
 
 ```bash
 pnpm dev
 ```
 
-The server will start on `http://localhost:3000` (or your configured PORT).
+The API runs at `http://localhost:3000` (or your configured `PORT`).
 
 ---
 
 ## 🤝 Contributing
-
-Found a bug or want to add a feature?
 
 1. Fork the repository.
 2. Create a feature branch (`git checkout -b feature/amazing-feature`).
@@ -159,7 +373,7 @@ Found a bug or want to add a feature?
 4. Push to the branch (`git push origin feature/amazing-feature`).
 5. Open a Pull Request.
 
-Make sure your code adheres to the existing functional DDD patterns. Keep it simple. Keep it clean.
+Please keep the code aligned with the **modular monolith and feature-first** structure: features own behavior, entities own rules, infrastructure owns side-effects, and layers are not bypassed. The folder structure in this README (“Folder Structure Overview” and “Layer-by-Layer Breakdown”) is the source of truth; new code should follow it so that docs and codebase stay in sync.
 
 ---
 

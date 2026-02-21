@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "description": "The engine that brings replies back.",
   "license": "MIT",
-  "main": "dist/server.js",
+  "main": "dist/app/server.js",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch src/app/server.ts",
     "build": "tsc && tsc-alias",
-    "start": "node dist/server.js",
+    "start": "node dist/app/server.js",
     "migrate": "node --import tsx node_modules/knex/bin/cli.js migrate:latest --knexfile knexfile.ts",
     "migrate:make": "node --import tsx node_modules/knex/bin/cli.js migrate:make --knexfile knexfile.ts",
     "migrate:rollback": "node --import tsx node_modules/knex/bin/cli.js migrate:rollback --knexfile knexfile.ts",
@@ -20,6 +20,7 @@
     "test:integration": "jest --testPathPatterns=integration --passWithNoTests",
     "test:e2e": "jest --testPathPatterns=e2e --passWithNoTests",
     "test:coverage": "jest --coverage --passWithNoTests",
+    "type-check": "tsc --noEmit",
     "prepare": "husky"
   },
   "lint-staged": {

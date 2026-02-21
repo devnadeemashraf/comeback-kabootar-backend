@@ -27,13 +27,7 @@
     /* Path Aliases */
     "baseUrl": ".",
     "paths": {
-      "@core/*": ["src/core/*"],
-      "@domain/*": ["src/domain/*"],
-      "@infrastructure/*": ["src/infrastructure/*"],
-      "@application/*": ["src/application/*"],
-      "@interfaces/*": ["src/interfaces/*"],
-      "@workers/*": ["src/workers/*"],
-      "@shared/*": ["src/shared/*"]
+      "@/*": ["src/*"]
     },
 
     /* Output */

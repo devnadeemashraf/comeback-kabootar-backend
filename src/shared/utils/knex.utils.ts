@@ -2,9 +2,9 @@ import path from 'node:path';
 
 import type { Knex } from 'knex';
 
-import { config } from '@core/config';
-import { logger } from '@core/logger';
-import type { NodeEnv } from '@shared/types/config';
+import { config } from '@/config/app.config';
+import { logger } from '@/shared/logger';
+import type { NodeEnv } from '@/shared/types/config';
 
 function getKnexConnectionConfig(env: NodeEnv = 'development'): Knex.PgConnectionConfig {
   const { user, password, host, port, sslMode } = config.database.pg;
@@ -48,7 +48,7 @@ function getKnexPoolConfig(env: NodeEnv = 'development'): Knex.PoolConfig {
 
 function getKnexMigratorConfig(): Knex.MigratorConfig {
   const base: Knex.MigratorConfig = {
-    directory: path.join(process.cwd(), 'src/infrastructure/database/migrations'),
+    directory: path.join(process.cwd(), 'src/migrations'),
     extension: 'ts',
   };
   return base;
