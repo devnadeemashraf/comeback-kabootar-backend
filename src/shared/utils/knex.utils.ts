@@ -1,16 +1,17 @@
-import path from "node:path";
-import type { Knex } from "knex";
+import path from 'node:path';
 
-import { config } from "@core/config";
-import type { NodeEnv } from "@shared/types/config";
+import type { Knex } from 'knex';
 
-function getKnexConnectionConfig(
-  env: NodeEnv = "development"
-): Knex.PgConnectionConfig {
-  let { user, password, host, port, db, sslMode } = config.database.pg;
+import { config } from '@core/config';
+import { logger } from '@core/logger';
+import type { NodeEnv } from '@shared/types/config';
 
-  if (env === "testing") {
-    db = db + "_test";
+function getKnexConnectionConfig(env: NodeEnv = 'development'): Knex.PgConnectionConfig {
+  const { user, password, host, port, sslMode } = config.database.pg;
+  let { db } = config.database.pg;
+
+  if (env === 'testing') {
+    db = db + '_test';
   }
 
   const connectionString =
@@ -26,10 +27,10 @@ function getKnexConnectionConfig(
   return base;
 }
 
-function getKnexPoolConfig(env: NodeEnv = "development"): Knex.PoolConfig {
+function getKnexPoolConfig(env: NodeEnv = 'development'): Knex.PoolConfig {
   let { min, max } = config.database.pool;
 
-  if (env === "production") {
+  if (env === 'production') {
     min = Math.max(min, 2);
     max = Math.max(max, 20);
   }
@@ -37,11 +38,8 @@ function getKnexPoolConfig(env: NodeEnv = "development"): Knex.PoolConfig {
   const base: Knex.PoolConfig = {
     min,
     max,
-    afterCreate: (
-      conn: unknown,
-      done: (err: Error | null, conn: unknown) => void
-    ) => {
-      console.log("New database connection established");
+    afterCreate: (conn: unknown, done: (err: Error | null, conn: unknown) => void) => {
+      logger.info('New database connection established');
       done(null, conn);
     },
   };
@@ -50,15 +48,15 @@ function getKnexPoolConfig(env: NodeEnv = "development"): Knex.PoolConfig {
 
 function getKnexMigratorConfig(): Knex.MigratorConfig {
   const base: Knex.MigratorConfig = {
-    directory: path.join(__dirname, "src/infrastructure/database/migrations"),
-    extension: "ts",
+    directory: path.join(__dirname, 'src/infrastructure/database/migrations'),
+    extension: 'ts',
   };
   return base;
 }
 
-export function getKnexConfig(env: NodeEnv = "development"): Knex.Config {
+export function getKnexConfig(env: NodeEnv = 'development'): Knex.Config {
   const base: Knex.Config = {
-    client: "pg",
+    client: 'pg',
     connection: getKnexConnectionConfig(env),
     pool: getKnexPoolConfig(env),
     migrations: getKnexMigratorConfig(),
