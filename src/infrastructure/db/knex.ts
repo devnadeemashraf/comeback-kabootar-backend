@@ -1,8 +1,8 @@
 import { type Knex, knex } from 'knex';
 
-import { config } from '@/config/app.config';
+import { config } from '@/config/app';
 import { logger } from '@/shared/logger';
-import { getKnexConfig } from '@/shared/utils/knex.utils';
+import { getKnexConfig } from '@/shared/utils/knex';
 
 let instance: Knex | null = null;
 

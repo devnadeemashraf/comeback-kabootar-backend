@@ -66,6 +66,16 @@ app → processes → features → entities → shared
 
 This can be enforced via ESLint layer boundaries.
 
+### API response contract
+
+All endpoints use the same JSON shapes so clients and the error handler behave consistently:
+
+- **Success (single):** `{ success: true, data: T }` — use `successResponse(data)` in controllers.
+- **Success (paginated):** `{ success: true, data: T[], meta: { total, page, limit } }` — use `paginatedResponse(data, meta)`.
+- **Failure:** `{ success: false, error: { message: string, code?: string } }` — used by the error middleware for every error; controllers that catch and respond should use `errorResponse(message, code)`.
+
+Types and helpers live in `shared/api/response.ts`.
+
 ---
 
 ## 📂 Layer-by-Layer Breakdown
@@ -156,7 +166,7 @@ features/<feature-name>/
 **What goes here:**
 
 - **types/** — Shared TypeScript types, branded types, enums
-- **errors/** — Custom error classes or error codes
+- **errors/** — Custom error classes (AppError and subclasses: NotFoundError, UnauthorizedError, etc.). Features should throw these for business/validation failures so the error middleware returns consistent responses; features may extend with their own (e.g. AuthError extends UnauthorizedError).
 - **utils/** — Pure helpers (formatting, parsing, etc.)
 - **logger/** — Logging interface or wrapper
 - **crypto/** — Hashing, signing (used by auth/infra)
@@ -173,7 +183,7 @@ features/<feature-name>/
 
 **What goes here:**
 
-- **db/** — Knex instance, connection config, and **repositories** (e.g. `job.repo.pg.ts`, `user.repo.pg.ts`) that implement feature/process contracts
+- **db/** — Knex instance, connection config, **TransactionRunner** (wraps `knex.transaction`), and **repositories** (e.g. `job.repo.pg.ts`, `user.repo.pg.ts`) that implement feature/process contracts. Repositories that support transactions accept an optional transaction context on each method; use cases that need atomicity use `TransactionRunner.run(tx => { ... })` and pass `tx` into every repo call inside the callback.
 - **oauth/** — Google and Microsoft OAuth clients
 - **mail/** — Email provider (e.g. Gmail API wrapper)
 - **queue/** — BullMQ (or other queue) client
@@ -188,7 +198,7 @@ features/<feature-name>/
 
 **Purpose:** Typed, centralized configuration only.
 
-**What goes here:** `env.ts`, `redis.ts`, `db.ts`, `oauth.ts`, etc. Validation and defaults live here; no business logic.
+**What goes here:** `app.ts` — validated environment variables and app-shaped config (database, cluster, log, etc.). No business logic; add further config files here only when needed (e.g. oauth, redis).
 
 ---
 
@@ -288,6 +298,8 @@ src/
 │   └── billing/
 │
 ├── shared/                 # Reusable primitives
+│   ├── api/                # Response contract (success, paginated, failure)
+│   ├── db/                 # Transaction contract (TransactionRunner, TransactionContext)
 │   ├── types/
 │   ├── errors/
 │   ├── utils/
@@ -299,6 +311,7 @@ src/
 ├── infrastructure/         # External systems and I/O
 │   ├── db/
 │   │   ├── knex.ts
+│   │   ├── transaction-runner.ts
 │   │   └── repositories/
 │   ├── oauth/
 │   ├── mail/
@@ -307,10 +320,7 @@ src/
 │   └── billing/
 │
 ├── config/                 # Environment and typed config
-│   ├── env.ts
-│   ├── redis.ts
-│   ├── db.ts
-│   └── oauth.ts
+│   └── app.ts
 │
 └── migrations/             # Knex (or other) migrations
 ```

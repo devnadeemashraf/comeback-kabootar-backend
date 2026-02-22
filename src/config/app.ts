@@ -35,7 +35,7 @@ if (!parsed.success) {
 
 const validatedEnv = parsed.data;
 
-/** Validated environment (raw parsed values). Re-exported by env.ts. */
+/** Validated environment (raw parsed values) and app config. */
 export const env = validatedEnv;
 
 export const config = {

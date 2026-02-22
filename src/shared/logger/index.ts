@@ -4,7 +4,7 @@ import pino, {
   type TransportSingleOptions,
 } from 'pino';
 
-import { config } from '@/config/app.config';
+import { config } from '@/config/app';
 
 type LoggerTransport = TransportSingleOptions | TransportMultiOptions | TransportPipelineOptions;
 

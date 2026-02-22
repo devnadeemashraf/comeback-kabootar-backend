@@ -4,7 +4,7 @@ import os from 'node:os';
 import { createApp } from './express';
 import { shutdown } from './shutdown';
 
-import { config } from '@/config/app.config';
+import { config } from '@/config/app';
 import { logger } from '@/shared/logger';
 
 if (cluster.isPrimary) {

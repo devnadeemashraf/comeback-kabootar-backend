@@ -1,21 +1,25 @@
 import type { NextFunction, Request, Response } from 'express';
 
+import { errorResponse } from '@/shared/api/response';
+import { AppError } from '@/shared/errors';
 import { logger } from '@/shared/logger';
 
-/**
- * Central error handler. Catches errors, logs them, and returns a consistent JSON response.
- * Must be registered after routes (as the last middleware).
- */
 export function errorMiddleware(
   err: Error,
   _req: Request,
   res: Response,
   _next: NextFunction,
 ): void {
+  if (err instanceof AppError) {
+    const status = err.status ?? 500;
+    const body = errorResponse(err.message, err.code);
+    res.status(status).json(body);
+    if (status >= 500) {
+      logger.error({ err: err.message, stack: err.stack, code: err.code }, 'AppError 5xx');
+    }
+    return;
+  }
+
   logger.error({ err: err.message, stack: err.stack }, 'Unhandled request error');
-
-  const status = (err as { status?: number }).status ?? 500;
-  const message = (err as { expose?: boolean }).expose ? err.message : 'Internal Server Error';
-
-  res.status(status).json({ error: message });
+  res.status(500).json(errorResponse('Internal Server Error'));
 }

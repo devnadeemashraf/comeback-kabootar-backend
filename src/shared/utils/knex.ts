@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import type { Knex } from 'knex';
 
-import { config } from '@/config/app.config';
+import { config } from '@/config/app';
 import { logger } from '@/shared/logger';
 import type { NodeEnv } from '@/shared/types/config';
 
