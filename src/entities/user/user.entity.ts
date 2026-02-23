@@ -1,5 +1,6 @@
 import type { EmailAddress } from '@/shared/types/entities';
 
+/** Domain entity for a user. */
 export interface User {
   id: string;
   email: EmailAddress;
@@ -10,6 +11,7 @@ export interface User {
   deletedAt: Date | null;
 }
 
+/** DB row shape for users (snake_case). */
 export interface UserRow {
   id: string;
   email: EmailAddress;

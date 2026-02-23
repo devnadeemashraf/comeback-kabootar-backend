@@ -2,8 +2,16 @@ import 'reflect-metadata';
 
 import { container } from 'tsyringe';
 
-import { registerBindings } from './bindings';
+import {
+  registerControllerBindings,
+  registerInfrastructureBindings,
+  registerRepositoryBindings,
+  registerServiceBindings,
+} from './bindings';
 
-registerBindings(container);
+registerControllerBindings(container);
+registerInfrastructureBindings(container);
+registerRepositoryBindings(container);
+registerServiceBindings(container);
 
 export { container };

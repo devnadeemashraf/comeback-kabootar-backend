@@ -1,10 +1,9 @@
 import type { Express } from 'express';
 
+import { authRoutes } from '@/features/authentication';
 import { healthRoutes } from '@/features/health';
 
 export function registerRoutes(app: Express) {
-  app.use('/health', healthRoutes);
-  app.use('/', (_req, res) => {
-    return res.send('Gutur Guu');
-  });
+  app.use('/api/v1/health', healthRoutes);
+  app.use('/api/v1/auth', authRoutes);
 }

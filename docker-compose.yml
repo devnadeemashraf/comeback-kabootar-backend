@@ -8,13 +8,13 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     environment:
-      POSTGRES_DB: ${POSTGRES_DATABASE:-primary}
+      POSTGRES_DB: ${POSTGRES_DATABASE:-comeback_kabootar_primary}
       POSTGRES_USER: ${POSTGRES_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-your_password_here}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DATABASE:-primary}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DATABASE:-comeback_kabootar_primary}"]
       interval: 5s
       timeout: 5s
       retries: 5

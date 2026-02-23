@@ -13,6 +13,19 @@ const envSchema = z.object({
   // Clustering
   WEB_CONCURRENCY: z.coerce.number().default(0),
 
+  // Auth (JWT + cookie)
+  JWT_SECRET: z.string().min(1).optional(), // required in non-test
+  JWT_EXPIRY: z.string().default('7d'),
+  JWT_ISSUER: z.string().min(1).optional(),
+  JWT_AUDIENCE: z.string().min(1).optional(),
+  AUTH_COOKIE_NAME: z.string().default('ck_session'),
+  FRONTEND_URL: z.url().default('http://localhost:5173'),
+  BACKEND_URL: z.url().default('http://localhost:3000'),
+
+  // Google OAuth
+  GOOGLE_CLIENT_ID: z.string().default(''),
+  GOOGLE_CLIENT_SECRET: z.string().default(''),
+
   // Database
   POSTGRES_HOST: z.string().min(1).default('localhost'),
   POSTGRES_PORT: z.coerce.number().default(5432),
@@ -33,7 +46,16 @@ if (!parsed.success) {
   process.exit(1);
 }
 
+// JWT_SECRET required in non-test environments
 const validatedEnv = parsed.data;
+if (
+  validatedEnv.NODE_ENV !== 'testing' &&
+  (!validatedEnv.JWT_SECRET || validatedEnv.JWT_SECRET.length === 0)
+) {
+  // eslint-disable-next-line no-console
+  console.error('JWT_SECRET is required when NODE_ENV is not "testing".');
+  process.exit(1);
+}
 
 /** Validated environment (raw parsed values) and app config. */
 export const env = validatedEnv;
@@ -44,6 +66,24 @@ export const config = {
   isTest: validatedEnv.NODE_ENV === 'testing',
   port: validatedEnv.PORT,
   nodeEnv: validatedEnv.NODE_ENV,
+
+  auth: {
+    jwtSecret: validatedEnv.JWT_SECRET ?? '',
+    jwtExpiry: validatedEnv.JWT_EXPIRY,
+    jwtIssuer: validatedEnv.JWT_ISSUER,
+    jwtAudience: validatedEnv.JWT_AUDIENCE,
+    cookieName: validatedEnv.AUTH_COOKIE_NAME,
+    frontendUrl: validatedEnv.FRONTEND_URL,
+    backendUrl: validatedEnv.BACKEND_URL,
+  },
+
+  oauth: {
+    google: {
+      clientId: validatedEnv.GOOGLE_CLIENT_ID,
+      clientSecret: validatedEnv.GOOGLE_CLIENT_SECRET,
+      redirectUri: `${validatedEnv.BACKEND_URL.replace(/\/$/, '')}/api/v1/auth/google/callback`,
+    },
+  },
 
   database: {
     pg: {

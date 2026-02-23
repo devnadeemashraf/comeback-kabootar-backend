@@ -1,5 +1,6 @@
 import type { ProviderType } from '@/shared/types/entities';
 
+/** Domain entity for an OAuth credential (e.g. Google) linked to a user. */
 export interface OAuthCredential {
   id: string;
   userId: string;
@@ -12,6 +13,7 @@ export interface OAuthCredential {
   updatedAt: Date;
 }
 
+/** DB row shape for oauth_credentials (snake_case). */
 export interface OAuthCredentialRow {
   id: string;
   user_id: string;

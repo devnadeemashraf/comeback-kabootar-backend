@@ -1,9 +1,14 @@
 import { Router } from 'express';
 
-import { healthController } from './health.controller';
+import { HealthController } from './health.controller';
+
+import { container } from '@/app/di/container';
+import { CONTROLLER_TOKENS } from '@/app/di/tokens/controller.tokens';
 
 const router = Router();
 
-router.get('/', healthController);
+const healthController = container.resolve<HealthController>(CONTROLLER_TOKENS.HealthController);
+
+router.get('/', healthController.getHealth);
 
 export const healthRoutes: ReturnType<typeof Router> = router;

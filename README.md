@@ -68,13 +68,10 @@ This can be enforced via ESLint layer boundaries.
 
 ### API response contract
 
-All endpoints use the same JSON shapes so clients and the error handler behave consistently:
+All endpoints use the same JSON shapes so clients and the error handler behave consistently. Types are defined in `shared/api/response.ts` (`SuccessResponse<T>`, `FailureResponse`, `ErrorPayload`).
 
-- **Success (single):** `{ success: true, data: T }` — use `successResponse(data)` in controllers.
-- **Success (paginated):** `{ success: true, data: T[], meta: { total, page, limit } }` — use `paginatedResponse(data, meta)`.
-- **Failure:** `{ success: false, error: { message: string, code?: string } }` — used by the error middleware for every error; controllers that catch and respond should use `errorResponse(message, code)`.
-
-Types and helpers live in `shared/api/response.ts`.
+- **Success:** `{ success: true, data: T }` — use `ok(res, data)` (200), `created(res, data)` (201), or `noContent(res)` (204).
+- **Failure:** `{ success: false, error: { message: string, code?: string } }` — use `unauthorized`, `validationError`, `notFound`, `internalError`, or `errorWithStatus(res, status, message, code)`. The global error middleware maps `AppError` to status and uses the same failure shape.
 
 ---
 
@@ -108,7 +105,7 @@ Types and helpers live in `shared/api/response.ts`.
 - Coordination between features (e.g. job repo, quota, ledger, notifier)
 - One folder per process (e.g. `job-dispatch/`, `contact-verification/`, `billing-cycle/`)
 
-**Rule:** No inline DB queries. All data access goes through feature or entity contracts (repositories, gateways). Processes call use cases and repositories, not raw Knex or Redis.
+**Rule:** No inline DB queries. All data access goes through repositories (concrete implementations in infrastructure, injected via DI). Processes call use cases and repositories, not raw Knex or Redis.
 
 ---
 
@@ -121,9 +118,8 @@ Types and helpers live in `shared/api/response.ts`.
 ```text
 features/<feature-name>/
 ├── api/           # HTTP interface (controllers, routes)
-├── model/         # Feature-specific state and domain models
-├── service/       # Use cases (business logic)
-├── contracts/     # Interfaces (repositories, gateways) — no implementations
+├── model/         # (Optional) Feature-specific state and domain models
+├── service/       # Injectable service classes (one per route capability); use DI
 ├── validators/    # Request/command schemas (e.g. Zod)
 ├── tests/
 └── index.ts
@@ -133,13 +129,12 @@ features/<feature-name>/
 
 | Folder          | Role                                                                   | Example                                         |
 | --------------- | ---------------------------------------------------------------------- | ----------------------------------------------- |
-| **api/**        | Controllers only. Parse request, call use case, return response.       | `create-job.controller.ts`, `routes.ts`         |
-| **service/**    | Use cases. Orchestrate entities and contracts; contain business rules. | `create-job.usecase.ts`, `pause-job.usecase.ts` |
-| **contracts/**  | Interfaces only (e.g. `JobRepository`, `SchedulerGateway`).            | No implementations here.                        |
-| **model/**      | Feature-level entities, value objects, and domain logic.               | `job.entity.ts`, `job.types.ts`                 |
-| **validators/** | Input validation (Zod/Joi).                                            | `job.schema.ts`                                 |
+| **api/**        | Controllers only. Parse request, call one service, return response.    | `auth.controller.ts`, `routes.ts`                          |
+| **service/**    | Injectable service classes (one per route capability) with `execute()`. | `initiate-google-auth.service.ts`, `get-current-user.service.ts` |
+| **model/**      | (Optional) Feature-level entities, value objects, and domain logic.     | `job.entity.ts`, `job.types.ts`                            |
+| **validators/** | Input validation (Zod/Joi).                                            | `callback.schema.ts`                                       |
 
-**Rules:** No Express/DB/OAuth in model or service beyond what’s abstracted behind contracts. Use cases are fully mockable and testable via those contracts.
+**Rules:** No Express/DB/OAuth in model or service beyond what’s abstracted behind contracts. Repositories and OAuth are concrete in infrastructure and injected via DI. Controllers let service errors propagate to the global error middleware.
 
 ---
 
@@ -183,14 +178,14 @@ features/<feature-name>/
 
 **What goes here:**
 
-- **db/** — Knex instance, connection config, **TransactionRunner** (wraps `knex.transaction`), and **repositories** (e.g. `job.repo.pg.ts`, `user.repo.pg.ts`) that implement feature/process contracts. Repositories that support transactions accept an optional transaction context on each method; use cases that need atomicity use `TransactionRunner.run(tx => { ... })` and pass `tx` into every repo call inside the callback.
+- **db/** — Knex instance, connection config, **TransactionRunner** (wraps `knex.transaction`), and **repositories** (e.g. `job.repo.pg.ts`, `user.repo.pg.ts`) that depend only on `RepositoryContext`. Repositories that support transactions accept an optional transaction context on each method; services that need atomicity use `TransactionRunner.run(tx => { ... })` and pass `tx` into every repo call inside the callback.
 - **oauth/** — Google and Microsoft OAuth clients
 - **mail/** — Email provider (e.g. Gmail API wrapper)
 - **queue/** — BullMQ (or other queue) client
 - **cache/** — Redis or other cache client (optional)
 - **billing/** — Payment provider client (if any)
 
-**Rule:** Implements interfaces defined in `features/*/contracts/` or `processes/`. No business rules; only I/O and mapping to/from domain shapes.
+**Rule:** Repositories and OAuth clients are concrete classes registered in DI; features and processes depend on them via tokens. No business rules; only I/O and mapping to/from domain shapes.
 
 ---
 
@@ -215,18 +210,35 @@ A hybrid of OO and functional is recommended:
 | Layer          | Style                         |
 | -------------- | ----------------------------- |
 | Entities       | Rich domain objects           |
-| Use cases      | Classes (inject contracts)    |
+| Use cases / services | Classes (inject repos, infra via DI) |
 | Controllers    | Functions                     |
 | Shared utils   | Pure functions                |
-| Infrastructure | Classes (implement contracts) |
+| Infrastructure | Concrete classes (repos, OAuth, etc.) |
 
 This keeps domain logic explicit and testable without forcing heavy OOP or pure FP across the whole stack.
+
+### Type and naming convention
+
+Use **explicit named types and interfaces** (avoid inline object types in public APIs). Prefer a **one-line comment** above each type describing its role. Do **not** use `I` or `T` prefixes.
+
+| Suffix / role | Use | Examples |
+| -------------- | --- | -------- |
+| (none) | Domain entity | `User`, `OAuthCredential` |
+| `Row` | DB row (snake_case) | `UserRow`, `OAuthCredentialRow` |
+| `Dto` | Data transferred to client | `UserDto` |
+| `Input` | Service/use-case input | `HandleGoogleCallbackInput` |
+| `Result` | Service/use-case output | `HandleGoogleCallbackResult`, `InitiateGoogleAuthResult` |
+| `Request*` | HTTP/Express context | `RequestUser` (user on `req`) |
+| `*Payload` | JWT or external API payload | `UserJwtPayload`, `VerifiedJwtPayload` |
+| `*Response` | External API response (raw) | `GoogleTokenApiResponse`, `GoogleUserInfoApiResponse` |
+
+**Auth and identity** (login, callback, logout, `/me`) are implemented in `features/authentication` and are the reference for one service per route capability and cookie-based JWT.
 
 ---
 
 ## 🧪 Testing Strategy
 
-- **Unit:** Focus on features (use cases) and entities. Mock contracts and repositories.
+- **Unit:** Focus on features (services) and entities. Mock repositories and infrastructure.
 - **Integration:** Real DB and Redis where needed; test repositories and processes.
 - **E2E:** HTTP requests through the app to verify responses and critical flows.
 
@@ -236,13 +248,13 @@ Tests can live under `features/<name>/tests/`, plus top-level `tests/unit/`, `te
 
 ## 📦 Dependency Injection
 
-A central container (e.g. `app/di/container.ts`) binds contracts to implementations (e.g. `JobRepository` → `PgJobRepository`, `CreateJobUseCase` with its deps). This keeps features and processes decoupled from infrastructure and makes mocking straightforward in tests.
+A central container (e.g. `app/di/container.ts`) registers controllers, services, repositories, and infrastructure (e.g. `UserRepositoryPostgres`, `GoogleOAuthClient`). Features depend on tokens; implementations live in infrastructure. This keeps features testable via mocks.
 
 ---
 
 ## 📈 Scaling and Extraction
 
-When the monolith outgrows a single deployable unit, feature (or process) modules can be extracted into separate services. Because contracts already define boundaries and infrastructure is isolated, the migration is mostly mechanical: move a feature folder, point its implementations to new runtimes, and expose or call APIs as needed.
+When the monolith outgrows a single deployable unit, feature (or process) modules can be extracted into separate services. Because features depend on injected infrastructure and layers are isolated, the migration is mostly mechanical: move a feature folder, point its implementations to new runtimes, and expose or call APIs as needed.
 
 ---
 
@@ -283,9 +295,8 @@ src/
 ├── features/               # User-visible capabilities (one folder per feature)
 │   └── <feature-name>/
 │       ├── api/            # Controllers, routes
-│       ├── model/          # Feature entities, types
-│       ├── service/        # Use cases
-│       ├── contracts/      # Repository/gateway interfaces
+│       ├── model/          # (Optional) Feature entities, types
+│       ├── service/        # Service classes (one per route capability); use DI
 │       ├── validators/
 │       ├── tests/
 │       └── index.ts

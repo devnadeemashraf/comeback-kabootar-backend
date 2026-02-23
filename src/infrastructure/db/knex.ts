@@ -1,4 +1,4 @@
-import { type Knex, knex } from 'knex';
+import knex, { type Knex } from 'knex';
 
 import { config } from '@/config/app';
 import { logger } from '@/shared/logger';
