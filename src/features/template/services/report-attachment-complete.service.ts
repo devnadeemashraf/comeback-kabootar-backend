@@ -24,7 +24,6 @@ export class ReportAttachmentCompleteService {
     authorId: string,
     input: ReportAttachmentCompleteInput,
     isPremium: boolean,
-    emitAttachmentComplete?: (key: string, name: string) => void,
   ): Promise<void> {
     const template = await this.templateRepo.findById(templateId);
     if (!template || template.authorId !== authorId) {
@@ -41,6 +40,5 @@ export class ReportAttachmentCompleteService {
     await this.templateRepo.update(templateId, authorId, {
       attachments: nextAttachments,
     });
-    emitAttachmentComplete?.(input.key, input.name);
   }
 }

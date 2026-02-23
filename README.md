@@ -84,7 +84,7 @@ It includes:
 - **Base URL, conventions, and response contract** — how success and error payloads are shaped.
 - **Health** — `GET /api/v1/health`.
 - **Authentication** — Google OAuth flow (`/auth/google`, `/auth/google/callback`), current user (`GET /auth/me`), and logout (`POST /auth/logout`).
-- **Templates** — CRUD (`GET/POST /templates`, `GET/PATCH/DELETE /templates/:id`), finalize (`POST /templates/:id/finalize`), attachment presign/complete/progress/delete, and SSE (`GET /templates/:id/events`).
+- **Templates** — CRUD (`GET/POST /templates`, `GET/PATCH/DELETE /templates/:id`), finalize (`POST /templates/:id/finalize`), attachment presign/complete/delete.
 
 For each endpoint you will find:
 

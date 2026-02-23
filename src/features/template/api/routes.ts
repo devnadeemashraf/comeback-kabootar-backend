@@ -13,11 +13,6 @@ const templateController = container.resolve<TemplateController>(
 
 router.get('/', authMiddleware, templateController.getAllTemplates.bind(templateController));
 router.post('/', authMiddleware, templateController.createNewTemplate.bind(templateController));
-router.get(
-  '/:id/events',
-  authMiddleware,
-  templateController.subscribeTemplateEvents.bind(templateController),
-);
 router.post(
   '/:id/finalize',
   authMiddleware,
@@ -32,11 +27,6 @@ router.post(
   '/:id/attachments/complete',
   authMiddleware,
   templateController.reportAttachmentComplete.bind(templateController),
-);
-router.post(
-  '/:id/attachments/:uploadId/progress',
-  authMiddleware,
-  templateController.reportUploadProgress.bind(templateController),
 );
 router.delete(
   '/:id/attachments/:key',

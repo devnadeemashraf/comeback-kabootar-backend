@@ -12,7 +12,6 @@ const PREMIUM_ATTACHMENT_LIMIT = 10;
 export interface PresignedUploadUrlResult {
   url: string;
   key: string;
-  uploadId: string;
 }
 
 @injectable()
@@ -43,7 +42,6 @@ export class GetPresignedUploadUrlService {
       );
     }
     const { url, key } = await this.storage.getPresignedPutUrl(templateId, fileName, contentType);
-    const uploadId = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    return { url, key, uploadId };
+    return { url, key };
   }
 }

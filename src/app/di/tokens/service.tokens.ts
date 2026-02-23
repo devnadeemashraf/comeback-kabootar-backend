@@ -19,7 +19,6 @@ const TEMPLATES_SERVICE_TOKENS = {
   FinalizeTemplateService: Symbol.for('FinalizeTemplateService'),
   GetPresignedUploadUrlService: Symbol.for('GetPresignedUploadUrlService'),
   ReportAttachmentCompleteService: Symbol.for('ReportAttachmentCompleteService'),
-  ReportUploadProgressService: Symbol.for('ReportUploadProgressService'),
   DeleteAttachmentService: Symbol.for('DeleteAttachmentService'),
 };
 
@@ -28,5 +27,3 @@ export const SERVICE_TOKENS = {
   ...AUTHENTICATION_SERVICE_TOKENS,
   ...TEMPLATES_SERVICE_TOKENS,
 } as const;
-
-export const TEMPLATE_EVENT_BUS_TOKEN = Symbol.for('TemplateEventBus');

@@ -9,18 +9,15 @@ import { GetAllTemplatesService } from '../services/get-all-templates.service';
 import { GetPresignedUploadUrlService } from '../services/get-presigned-upload-url.service';
 import { GetTemplateByIdService } from '../services/get-template-by-id.service';
 import { ReportAttachmentCompleteService } from '../services/report-attachment-complete.service';
-import { ReportUploadProgressService } from '../services/report-upload-progress.service';
 import { UpdateTemplateService } from '../services/update-template.service';
 import { attachmentCompleteBodySchema } from '../validators/attachment-complete.schema';
 import { createTemplateBodySchema } from '../validators/create-template.schema';
 import { getTemplateByIdParamsSchema } from '../validators/get-template-by-id.schema';
 import { presignAttachmentBodySchema } from '../validators/presign-attachment.schema';
 import { updateTemplateBodySchema } from '../validators/update-template.schema';
-import { uploadProgressBodySchema } from '../validators/upload-progress.schema';
 
 import { REPOSITORY_TOKENS } from '@/app/di/tokens/repository.tokens';
-import { SERVICE_TOKENS, TEMPLATE_EVENT_BUS_TOKEN } from '@/app/di/tokens/service.tokens';
-import type { TemplateEventBus } from '@/features/template/template-event-bus';
+import { SERVICE_TOKENS } from '@/app/di/tokens/service.tokens';
 import type { UserRepositoryPostgres } from '@/infrastructure/db/repositories/pg/user.repo.pg';
 import { created, noContent, notFound, ok, validationError } from '@/shared/api/response';
 import { AppError, NotFoundError } from '@/shared/errors';
@@ -44,14 +41,10 @@ class TemplateController {
     private readonly getPresignedUploadUrlService: GetPresignedUploadUrlService,
     @inject(SERVICE_TOKENS.ReportAttachmentCompleteService)
     private readonly reportAttachmentCompleteService: ReportAttachmentCompleteService,
-    @inject(SERVICE_TOKENS.ReportUploadProgressService)
-    private readonly reportUploadProgressService: ReportUploadProgressService,
     @inject(SERVICE_TOKENS.DeleteAttachmentService)
     private readonly deleteAttachmentService: DeleteAttachmentService,
     @inject(REPOSITORY_TOKENS.UserRepositoryPostgres)
     private readonly userRepo: UserRepositoryPostgres,
-    @inject(TEMPLATE_EVENT_BUS_TOKEN)
-    private readonly eventBus: TemplateEventBus,
   ) {}
 
   private async getIsPremium(userId: string): Promise<boolean> {
@@ -219,15 +212,8 @@ class TemplateController {
     const { id } = paramsParsed.data;
     const authorId = req.user!.id;
     const isPremium = await this.getIsPremium(authorId);
-    const emit = (key: string, name: string) => this.eventBus.emitAttachmentComplete(id, key, name);
     try {
-      await this.reportAttachmentCompleteService.execute(
-        id,
-        authorId,
-        bodyParsed.data,
-        isPremium,
-        emit,
-      );
+      await this.reportAttachmentCompleteService.execute(id, authorId, bodyParsed.data, isPremium);
       noContent(res);
     } catch (err) {
       if (err instanceof NotFoundError) {
@@ -240,19 +226,6 @@ class TemplateController {
       }
       throw err;
     }
-  }
-
-  async reportUploadProgress(req: Request, res: Response): Promise<void> {
-    const paramsParsed = getTemplateByIdParamsSchema.safeParse(req.params);
-    const bodyParsed = uploadProgressBodySchema.safeParse(req.body);
-    if (!paramsParsed.success || !bodyParsed.success) {
-      validationError(res, 'Invalid params or body', 'VALIDATION_ERROR');
-      return;
-    }
-    const { id, uploadId } = req.params as { id: string; uploadId: string };
-    const authorId = req.user!.id;
-    await this.reportUploadProgressService.execute(id, authorId, uploadId, bodyParsed.data.percent);
-    noContent(res);
   }
 
   async deleteAttachment(req: Request, res: Response): Promise<void> {
@@ -279,32 +252,6 @@ class TemplateController {
       }
       throw err;
     }
-  }
-
-  subscribeTemplateEvents(req: Request, res: Response): void {
-    const parsed = getTemplateByIdParamsSchema.safeParse(req.params);
-    if (!parsed.success) {
-      validationError(res, 'Invalid template ID', 'INVALID_PARAMS');
-      return;
-    }
-    const { id } = parsed.data;
-    const authorId = req.user!.id;
-    this.getTemplateByIdService.execute(id, authorId).then((template) => {
-      if (!template) {
-        notFound(res, 'Template not found');
-        return;
-      }
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      res.flushHeaders?.();
-      const listener = (event: { type: string; data: unknown }) => {
-        const data = JSON.stringify(event);
-        res.write(`event: ${event.type}\ndata: ${data}\n\n`);
-      };
-      this.eventBus.on(id, listener);
-      req.on('close', () => this.eventBus.off(id));
-    });
   }
 }
 

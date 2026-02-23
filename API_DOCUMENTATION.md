@@ -418,15 +418,47 @@ Moves a template from **draft** to **ready** (publish). Attachment count must be
 
 ---
 
-### Attachment upload flow (presigned URL)
+### Attachment upload: end-to-end flow
 
-Attachments are not uploaded to the backend. The client:
+Attachments are **not** sent through the backend. The backend only issues a **presigned URL**; the client uploads the file **directly to object storage (MinIO/S3)**. This keeps server load and bandwidth low and scales well.
 
-1. Requests a **presigned upload URL** from the backend.
-2. **Uploads the file directly** to that URL (e.g. `PUT` with the file body).
-3. **Reports completion** to the backend with the object key and display name so the template’s `attachments` array is updated.
+#### Step 1: Get a presigned URL
 
-Optionally, the client can report **upload progress** and subscribe to **SSE** for live updates.
+- **Request:** `POST /api/v1/templates/:id/attachments/presign` with body `{ "fileName": "document.pdf", "contentType": "application/pdf" }` (see endpoint below).
+- **Response:** `{ "url": "<presigned-put-url>", "key": "templates/..." }`.
+- Store `url` and `key` for the next steps.
+
+#### Step 2: Upload the file to the presigned URL
+
+The **client** performs a **single HTTP PUT** to the `url` received in step 1.
+
+- **Method:** `PUT`
+- **URL:** The `url` from the presign response (full URL; do not add path or query).
+- **Headers:**
+  - `Content-Type`: optional but recommended; use the same value you sent in the presign request (e.g. `application/pdf`).
+  - Do **not** send your session cookie or API auth to this URL—the URL itself is already authorized. The request goes **directly to MinIO/S3**, not to the Comeback Kabootar backend.
+- **Body:** The raw file bytes (e.g. `Blob`, `File`, or `ArrayBuffer` in the browser; `Buffer` or stream in Node).
+
+**Example (browser):**
+
+```js
+const file = document.querySelector('input[type="file"]').files[0];
+const response = await fetch(presignData.url, {
+  method: 'PUT',
+  headers: { 'Content-Type': file.type || 'application/octet-stream' },
+  body: file,
+});
+if (!response.ok) throw new Error('Upload failed');
+```
+
+- **Success:** Storage returns `200 OK` (or `204`). The file is now in MinIO; the backend still does **not** have the file and does **not** know the upload finished until you call the “complete” endpoint.
+
+#### Step 3: Report completion to the backend
+
+After the PUT to the presigned URL succeeds:
+
+- **Request:** `POST /api/v1/templates/:id/attachments/complete` with body `{ "key": "<key from presign>", "name": "My Document.pdf" }`.
+- The backend adds this attachment to the template’s `attachments` array.
 
 ---
 
@@ -458,16 +490,13 @@ Returns a presigned URL and metadata so the client can upload one file directly 
   "success": true,
   "data": {
     "url": "https://...",
-    "key": "templates/<templateId>/<unique-key>",
-    "uploadId": "upload-<timestamp>-<random>"
+    "key": "templates/<templateId>/<unique-key>"
   }
 }
 ```
 
-- **url:** Use this URL to upload the file (e.g. `PUT` with body = file bytes; set `Content-Type` if provided).
+- **url:** Use this URL to upload the file: send a **PUT** request with the file as the body (see [Attachment upload: end-to-end flow](#attachment-upload-end-to-end-flow)).
 - **key:** Send this in the “attachment complete” request and when deleting the attachment.
-- **uploadId:** Use this when reporting upload progress (optional).
-
 **Response (not found)**
 
 - **Status:** `404 Not Found` – template not found or not owned.
@@ -513,38 +542,6 @@ Called after the client has successfully uploaded a file to the presigned URL. A
 
 ---
 
-### POST `/api/v1/templates/:id/attachments/:uploadId/progress`
-
-Reports upload progress for an attachment (e.g. percentage). Used for progress bars and SSE. Does not change template data.
-
-**Request**
-
-- **Method:** `POST`
-- **Path parameters:**
-  - `id` – Template UUID.
-  - `uploadId` – Value returned from the presign response.
-- **Headers:** `Content-Type: application/json`, auth cookie.
-- **Body:**
-
-```json
-{
-  "percent": 0
-}
-```
-
-`percent` must be a number between 0 and 100.
-
-**Response (success)**
-
-- **Status:** `204 No Content`
-- **Body:** None.
-
-**Response (validation)**
-
-- **Status:** `422` – invalid params or body (e.g. `percent` out of range).
-
----
-
 ### DELETE `/api/v1/templates/:id/attachments/:key`
 
 Removes an attachment from the template and deletes the object from storage. `key` must be URL-encoded if it contains special characters (e.g. slashes).
@@ -566,32 +563,6 @@ Removes an attachment from the template and deletes the object from storage. `ke
 
 - **Status:** `404 Not Found` – template not found, not owner, or attachment with that `key` not found.
 - **Body:** `{ "success": false, "error": { "message": "Template not found" } }` (or “Attachment not found”).
-
----
-
-### GET `/api/v1/templates/:id/events` (SSE)
-
-Server-Sent Events stream for template-related events (e.g. upload progress, attachment complete). Subscribe to get real-time updates while editing a template or uploading attachments.
-
-**Request**
-
-- **Method:** `GET`
-- **Path parameters:** `id` – Template UUID.
-- **Headers:** Auth cookie.
-- **Body:** None.
-
-**Response**
-
-- **Status:** `200 OK`
-- **Headers:** `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`.
-- **Body:** Stream of SSE messages.
-
-**Event types (examples):**
-
-- `progress` – Upload progress: `data` is `{ "type": "progress", "data": { "uploadId": "...", "percent": 50 } }`.
-- `attachmentComplete` – New attachment added: `data` is `{ "type": "attachmentComplete", "data": { "key": "...", "name": "..." } }`.
-
-**Client:** Use `EventSource` (or equivalent) with the request URL (including credentials/cookies as per your environment). On connection close, stop listening. If the template is not found or not owned, the server responds with `404` JSON before streaming.
 
 ---
 
