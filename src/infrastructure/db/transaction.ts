@@ -7,11 +7,19 @@
  * (TransactionContext) on every method that touches the DB. Use cases that
  * need atomicity inject TransactionRunner and run:
  *
- *   await this.transactionRunner.run(async (tx) => {
+ *   await this.serviceContext.withTransaction(async (tx) => {
  *     await this.userRepo.create(user, tx);
  *     await this.oauthCredentialRepo.save(cred, tx);
  *     return result;
  *   });
+ *
+ * Why TransactionContext instead of Knex.Transaction?
+ * - Domain/application layers stay free of Knex: they depend only on this
+ *   contract. Swapping the DB implementation (e.g. different driver) does not
+ *   leak into use cases or repositories at the type level.
+ * - The actual value at runtime is a Knex transaction (see transaction-runner.ts);
+ *   the type is intentionally opaque so that only infrastructure code treats it
+ *   as Knex.Transaction (e.g. RepositoryContext.getExecutor(tx)).
  */
 
 /** Opaque type for a transaction context. Implementations use Knex.Transaction. */

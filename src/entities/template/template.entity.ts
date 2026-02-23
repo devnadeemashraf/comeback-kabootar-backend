@@ -1,10 +1,18 @@
+export type TemplateStatus = 'draft' | 'ready';
+
+export interface TemplateAttachment {
+  key: string;
+  name: string;
+}
+
 export interface Template {
   id: string;
   authorId: string;
   title: string;
   subject: string;
   body: string;
-  attachments: Record<string, unknown> | null;
+  attachments: TemplateAttachment[];
+  status: TemplateStatus;
   isPublic: boolean;
   forkCount: number;
   starCount: number;
@@ -18,7 +26,8 @@ export interface TemplateRow {
   title: string;
   subject: string;
   body: string;
-  attachments: Record<string, unknown> | null;
+  attachments: TemplateAttachment[] | null;
+  status: TemplateStatus;
   is_public: boolean;
   fork_count: number;
   star_count: number;

@@ -5,6 +5,7 @@ import { INFRASTRUCTURE_TOKENS } from '../tokens/infrastructure.tokens';
 import { getDatabaseConnection } from '@/infrastructure/db/knex';
 import { KnexTransactionRunner } from '@/infrastructure/db/transaction-runner';
 import { GoogleOAuthClient } from '@/infrastructure/oauth/google-oauth.client';
+import { MinioStorageFacade } from '@/infrastructure/storage/minio-storage.facade';
 import { logger } from '@/shared/logger';
 
 export function registerInfrastructureBindings(container: DependencyContainer): void {
@@ -12,4 +13,5 @@ export function registerInfrastructureBindings(container: DependencyContainer): 
   container.register(INFRASTRUCTURE_TOKENS.Knex, { useValue: getDatabaseConnection() });
   container.register(INFRASTRUCTURE_TOKENS.TransactionRunner, { useClass: KnexTransactionRunner });
   container.registerSingleton(INFRASTRUCTURE_TOKENS.GoogleOAuthClient, GoogleOAuthClient);
+  container.registerSingleton(INFRASTRUCTURE_TOKENS.TemplateStorageFacade, MinioStorageFacade);
 }

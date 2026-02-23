@@ -22,8 +22,8 @@ describe('HandleGoogleAuthenticationCallbackService', () => {
     save: jest.fn(),
     updateTokens: jest.fn(),
   };
-  const mockTransactionRunner = {
-    run: jest.fn((fn: (tx: unknown) => Promise<unknown>) => fn(null)),
+  const mockServiceContext = {
+    withTransaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) => fn(null)),
   };
 
   const mockGoogleOAuthClient = {
@@ -32,10 +32,10 @@ describe('HandleGoogleAuthenticationCallbackService', () => {
   };
 
   const service = new HandleGoogleAuthenticationCallbackService(
+    mockServiceContext as any,
     mockGoogleOAuthClient as any,
     mockUserRepo as any,
     mockOAuthCredentialRepo as any,
-    mockTransactionRunner as any,
   );
 
   const validUser = {
@@ -124,7 +124,7 @@ describe('HandleGoogleAuthenticationCallbackService', () => {
 
     expect(result.jwt).toBe('mock-jwt');
     expect(result.user).toEqual({ id: 'user-1', email: 'test@example.com' });
-    expect(mockTransactionRunner.run).toHaveBeenCalled();
+    expect(mockServiceContext.withTransaction).toHaveBeenCalled();
     expect(mockUserRepo.findByEmail).toHaveBeenCalledWith('test@example.com', null);
     expect(mockUserRepo.create).toHaveBeenCalledWith({ email: 'test@example.com' }, null);
     expect(mockOAuthCredentialRepo.save).toHaveBeenCalled();

@@ -75,6 +75,28 @@ All endpoints use the same JSON shapes so clients and the error handler behave c
 
 ---
 
+## 📡 API Documentation
+
+A full, client-ready reference for all HTTP endpoints is maintained in **[API_DOCUMENTATION.md](./API_DOCUMENTATION.md)**.
+
+It includes:
+
+- **Base URL, conventions, and response contract** — how success and error payloads are shaped.
+- **Health** — `GET /api/v1/health`.
+- **Authentication** — Google OAuth flow (`/auth/google`, `/auth/google/callback`), current user (`GET /auth/me`), and logout (`POST /auth/logout`).
+- **Templates** — CRUD (`GET/POST /templates`, `GET/PATCH/DELETE /templates/:id`), finalize (`POST /templates/:id/finalize`), attachment presign/complete/progress/delete, and SSE (`GET /templates/:id/events`).
+
+For each endpoint you will find:
+
+- **Route and method** — exact path and HTTP verb.
+- **What the API expects** — path/query params, headers, and request body (with types and validation rules).
+- **What you should expect as a response** — status codes, success body shape, and error body with optional `code` for client handling.
+- **Tier limits** — e.g. attachment limits (2 free / 10 premium) and when `ATTACHMENT_LIMIT` is returned.
+
+Use **API_DOCUMENTATION.md** as the single source of truth when integrating the client with the backend.
+
+---
+
 ## 📂 Layer-by-Layer Breakdown
 
 ### 1. `app/` — Application Shell
@@ -88,7 +110,7 @@ All endpoints use the same JSON shapes so clients and the error handler behave c
 - Global middleware (auth, error handling, rate limiting)
 - Route mounting
 
-**What goes here:** `server.ts`, `express.ts`, `router.ts`, `di/` (container, bindings), `middlewares/` (auth, error, rate-limit). Entry point wires the app and calls `listen`. Controllers and use cases are never implemented here.
+**What goes here:** `server.ts`, `express.ts`, `router.ts`, `di/` (container, bindings for controllers, services, repositories, context, and infrastructure), `context/` (shared contexts for the service and repository layers: **ServiceContext** — logger + `withTransaction` for transactional atomicity, used by services; **RepositoryContext** — Knex, logger, and `getExecutor(tx)` for repositories), `middlewares/` (auth, error, rate-limit). Entry point wires the app and calls `listen`. Controllers and use cases are never implemented here.
 
 ---
 
@@ -105,7 +127,7 @@ All endpoints use the same JSON shapes so clients and the error handler behave c
 - Coordination between features (e.g. job repo, quota, ledger, notifier)
 - One folder per process (e.g. `job-dispatch/`, `contact-verification/`, `billing-cycle/`)
 
-**Rule:** No inline DB queries. All data access goes through repositories (concrete implementations in infrastructure, injected via DI). Processes call use cases and repositories, not raw Knex or Redis.
+**Rule:** No inline DB queries. All data access goes through repositories (injected via DI). When a process or use case needs multiple repository operations in one atomic unit, it injects **ServiceContext** and uses `serviceContext.withTransaction(tx => { ... })`, passing `tx` into each repo call. Processes call use cases and repositories, not raw Knex or Redis.
 
 ---
 
@@ -127,14 +149,14 @@ features/<feature-name>/
 
 **Folder roles:**
 
-| Folder          | Role                                                                   | Example                                         |
-| --------------- | ---------------------------------------------------------------------- | ----------------------------------------------- |
-| **api/**        | Controllers only. Parse request, call one service, return response.    | `auth.controller.ts`, `routes.ts`                          |
+| Folder          | Role                                                                    | Example                                                          |
+| --------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| **api/**        | Controllers only. Parse request, call one service, return response.     | `auth.controller.ts`, `routes.ts`                                |
 | **service/**    | Injectable service classes (one per route capability) with `execute()`. | `initiate-google-auth.service.ts`, `get-current-user.service.ts` |
-| **model/**      | (Optional) Feature-level entities, value objects, and domain logic.     | `job.entity.ts`, `job.types.ts`                            |
-| **validators/** | Input validation (Zod/Joi).                                            | `callback.schema.ts`                                       |
+| **model/**      | (Optional) Feature-level entities, value objects, and domain logic.     | `job.entity.ts`, `job.types.ts`                                  |
+| **validators/** | Input validation (Zod/Joi).                                             | `callback.schema.ts`                                             |
 
-**Rules:** No Express/DB/OAuth in model or service beyond what’s abstracted behind contracts. Repositories and OAuth are concrete in infrastructure and injected via DI. Controllers let service errors propagate to the global error middleware.
+**Rules:** No Express/DB/OAuth in model or service beyond what’s abstracted behind contracts. Repositories and OAuth are concrete in infrastructure and injected via DI. Services that need **transactional atomicity** (e.g. create user + save OAuth credential in one unit) inject **ServiceContext** and call `serviceContext.withTransaction(tx => { ... })`, then pass `tx` into every repository method that supports it. Controllers let service errors propagate to the global error middleware.
 
 ---
 
@@ -178,7 +200,7 @@ features/<feature-name>/
 
 **What goes here:**
 
-- **db/** — Knex instance, connection config, **TransactionRunner** (wraps `knex.transaction`), and **repositories** (e.g. `job.repo.pg.ts`, `user.repo.pg.ts`) that depend only on `RepositoryContext`. Repositories that support transactions accept an optional transaction context on each method; services that need atomicity use `TransactionRunner.run(tx => { ... })` and pass `tx` into every repo call inside the callback.
+- **db/** — Knex instance, connection config, **transaction contract** (`transaction.ts`: `TransactionContext`, `TransactionRunner` interface), **TransactionRunner** implementation (`transaction-runner.ts`, wraps `knex.transaction`), and **repositories** (e.g. `user.repo.pg.ts`, `oauth-credential.repo.pg.ts`, `template.repo.pg.ts`) that depend on **RepositoryContext** (injected via DI; see `app/context/RepositoryContext.ts`). Repositories accept an optional `tx?: TransactionContext` on each method and use `repoCtx.getExecutor(tx)` so a single code path works with or without a transaction; they **do not** start or commit transactions. Repositories use `repoCtx.logger` for execution traceability (e.g. method name, key params, result summary). **Atomicity is achieved in the service layer**: services inject **ServiceContext** and call `serviceContext.withTransaction(tx => { ... })`, then pass `tx` into every repository call inside the callback; on success the transaction is committed, on throw it is rolled back and the error is logged and rethrown.
 - **oauth/** — Google and Microsoft OAuth clients
 - **mail/** — Email provider (e.g. Gmail API wrapper)
 - **queue/** — BullMQ (or other queue) client
@@ -207,13 +229,13 @@ features/<feature-name>/
 
 A hybrid of OO and functional is recommended:
 
-| Layer          | Style                         |
-| -------------- | ----------------------------- |
-| Entities       | Rich domain objects           |
-| Use cases / services | Classes (inject repos, infra via DI) |
-| Controllers    | Functions                     |
-| Shared utils   | Pure functions                |
-| Infrastructure | Concrete classes (repos, OAuth, etc.) |
+| Layer                | Style                                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Entities             | Rich domain objects                                                                                                 |
+| Use cases / services | Classes (inject ServiceContext, repos, infra via DI; use `serviceContext.withTransaction` when atomicity is needed) |
+| Controllers          | Functions                                                                                                           |
+| Shared utils         | Pure functions                                                                                                      |
+| Infrastructure       | Concrete classes (repos, OAuth, etc.); repos use RepositoryContext (getExecutor, logger)                            |
 
 This keeps domain logic explicit and testable without forcing heavy OOP or pure FP across the whole stack.
 
@@ -221,16 +243,16 @@ This keeps domain logic explicit and testable without forcing heavy OOP or pure 
 
 Use **explicit named types and interfaces** (avoid inline object types in public APIs). Prefer a **one-line comment** above each type describing its role. Do **not** use `I` or `T` prefixes.
 
-| Suffix / role | Use | Examples |
-| -------------- | --- | -------- |
-| (none) | Domain entity | `User`, `OAuthCredential` |
-| `Row` | DB row (snake_case) | `UserRow`, `OAuthCredentialRow` |
-| `Dto` | Data transferred to client | `UserDto` |
-| `Input` | Service/use-case input | `HandleGoogleCallbackInput` |
-| `Result` | Service/use-case output | `HandleGoogleCallbackResult`, `InitiateGoogleAuthResult` |
-| `Request*` | HTTP/Express context | `RequestUser` (user on `req`) |
-| `*Payload` | JWT or external API payload | `UserJwtPayload`, `VerifiedJwtPayload` |
-| `*Response` | External API response (raw) | `GoogleTokenApiResponse`, `GoogleUserInfoApiResponse` |
+| Suffix / role | Use                         | Examples                                                 |
+| ------------- | --------------------------- | -------------------------------------------------------- |
+| (none)        | Domain entity               | `User`, `OAuthCredential`                                |
+| `Row`         | DB row (snake_case)         | `UserRow`, `OAuthCredentialRow`                          |
+| `Dto`         | Data transferred to client  | `UserDto`                                                |
+| `Input`       | Service/use-case input      | `HandleGoogleCallbackInput`                              |
+| `Result`      | Service/use-case output     | `HandleGoogleCallbackResult`, `InitiateGoogleAuthResult` |
+| `Request*`    | HTTP/Express context        | `RequestUser` (user on `req`)                            |
+| `*Payload`    | JWT or external API payload | `UserJwtPayload`, `VerifiedJwtPayload`                   |
+| `*Response`   | External API response (raw) | `GoogleTokenApiResponse`, `GoogleUserInfoApiResponse`    |
 
 **Auth and identity** (login, callback, logout, `/me`) are implemented in `features/authentication` and are the reference for one service per route capability and cookie-based JWT.
 
@@ -248,7 +270,7 @@ Tests can live under `features/<name>/tests/`, plus top-level `tests/unit/`, `te
 
 ## 📦 Dependency Injection
 
-A central container (e.g. `app/di/container.ts`) registers controllers, services, repositories, and infrastructure (e.g. `UserRepositoryPostgres`, `GoogleOAuthClient`). Features depend on tokens; implementations live in infrastructure. This keeps features testable via mocks.
+A central container (`app/di/container.ts`) registers, in order: **controllers**, **infrastructure** (Knex, Logger, TransactionRunner, OAuth clients), **repositories** (RepositoryContext and concrete repos such as `UserRepositoryPostgres`, `OAuthCredentialRepositoryPostgres`), **context** (**ServiceContext** — logger and `withTransaction` for the service layer), and **services**. Tokens live under `app/di/tokens/` (e.g. `CONTEXT_TOKENS.ServiceContext`, `REPOSITORY_TOKENS.RepositoryContext`, `INFRASTRUCTURE_TOKENS.TransactionRunner`). Features and processes depend on these tokens; concrete implementations live in infrastructure or app/context. This keeps features testable via mocks.
 
 ---
 
@@ -275,13 +297,15 @@ When the monolith outgrows a single deployable unit, feature (or process) module
 ```text
 src/
 │
-├── app/                    # Application shell: server, Express, DI, global middleware
+├── app/                    # Application shell: server, Express, DI, context, global middleware
 │   ├── server.ts
 │   ├── express.ts
 │   ├── router.ts
+│   ├── context/            # Shared contexts: ServiceContext (logger, withTransaction), RepositoryContext (Knex, logger, getExecutor)
 │   ├── di/
 │   │   ├── container.ts
-│   │   └── bindings.ts
+│   │   ├── bindings/       # controller, infrastructure, repository, context, service bindings
+│   │   └── tokens/         # controller, infrastructure, repository, context, service tokens
 │   └── middlewares/
 │       ├── auth.middleware.ts
 │       ├── error.middleware.ts
@@ -310,11 +334,11 @@ src/
 │
 ├── shared/                 # Reusable primitives
 │   ├── api/                # Response contract (success, paginated, failure)
-│   ├── db/                 # Transaction contract (TransactionRunner, TransactionContext)
 │   ├── types/
 │   ├── errors/
 │   ├── utils/
 │   ├── logger/
+│   ├── jwt/
 │   ├── crypto/
 │   ├── result/
 │   └── testing/
@@ -322,8 +346,9 @@ src/
 ├── infrastructure/         # External systems and I/O
 │   ├── db/
 │   │   ├── knex.ts
+│   │   ├── transaction.ts       # TransactionContext type, TransactionRunner interface
 │   │   ├── transaction-runner.ts
-│   │   └── repositories/
+│   │   └── repositories/       # pg/*.repo.pg.ts (depend on RepositoryContext via DI)
 │   ├── oauth/
 │   ├── mail/
 │   ├── queue/

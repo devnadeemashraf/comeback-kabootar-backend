@@ -1,3 +1,4 @@
+export * from './context.bindings';
 export * from './controller.bindings';
 export * from './infrastructure.bindings';
 export * from './repository.bindings';

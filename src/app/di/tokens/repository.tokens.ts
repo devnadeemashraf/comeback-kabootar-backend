@@ -4,4 +4,5 @@ export const REPOSITORY_TOKENS = {
   // Repositories
   UserRepositoryPostgres: Symbol.for('UserRepositoryPostgres'),
   OAuthCredentialRepositoryPostgres: Symbol.for('OAuthCredentialRepositoryPostgres'),
+  TemplateRepositoryPostgres: Symbol.for('TemplateRepositoryPostgres'),
 } as const;

@@ -1,5 +1,7 @@
 import { inject, injectable } from 'tsyringe';
 
+import type { ServiceContext } from '@/app/context/ServiceContext';
+import { CONTEXT_TOKENS } from '@/app/di/tokens/context.tokens';
 import { INFRASTRUCTURE_TOKENS } from '@/app/di/tokens/infrastructure.tokens';
 import { REPOSITORY_TOKENS } from '@/app/di/tokens/repository.tokens';
 import { config } from '@/config/app';
@@ -7,7 +9,6 @@ import type { UserDto } from '@/entities/user';
 import { toUserDto } from '@/entities/user';
 import type { OAuthCredentialRepositoryPostgres } from '@/infrastructure/db/repositories/pg/oauth-credential.repo.pg';
 import type { UserRepositoryPostgres } from '@/infrastructure/db/repositories/pg/user.repo.pg';
-import type { TransactionRunner } from '@/infrastructure/db/transaction';
 import type { GoogleOAuthClient } from '@/infrastructure/oauth/google-oauth.client';
 import { UnauthorizedError, ValidationError } from '@/shared/errors';
 import { signJwt } from '@/shared/jwt';
@@ -31,14 +32,14 @@ export interface HandleGoogleCallbackResult {
 @injectable()
 export class HandleGoogleAuthenticationCallbackService {
   constructor(
+    @inject(CONTEXT_TOKENS.ServiceContext)
+    private readonly serviceContext: ServiceContext,
     @inject(INFRASTRUCTURE_TOKENS.GoogleOAuthClient)
     private readonly googleOAuthClient: GoogleOAuthClient,
     @inject(REPOSITORY_TOKENS.UserRepositoryPostgres)
     private readonly userRepo: UserRepositoryPostgres,
     @inject(REPOSITORY_TOKENS.OAuthCredentialRepositoryPostgres)
     private readonly oauthCredentialRepo: OAuthCredentialRepositoryPostgres,
-    @inject(INFRASTRUCTURE_TOKENS.TransactionRunner)
-    private readonly transactionRunner: TransactionRunner,
   ) {}
 
   async execute(input: HandleGoogleCallbackInput): Promise<HandleGoogleCallbackResult> {
@@ -69,7 +70,7 @@ export class HandleGoogleAuthenticationCallbackService {
       throw new ValidationError('Email not provided by provider', 'MISSING_EMAIL');
     }
 
-    const user = await this.transactionRunner.run(async (tx) => {
+    const user = await this.serviceContext.withTransaction(async (tx) => {
       let u = await this.userRepo.findByEmail(email, tx);
       if (!u) {
         u = await this.userRepo.create({ email }, tx);

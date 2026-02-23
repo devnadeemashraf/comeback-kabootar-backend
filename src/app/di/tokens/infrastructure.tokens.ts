@@ -3,4 +3,5 @@ export const INFRASTRUCTURE_TOKENS = {
   Logger: Symbol.for('Logger'),
   TransactionRunner: Symbol.for('TransactionRunner'),
   GoogleOAuthClient: Symbol.for('GoogleOAuthClient'),
+  TemplateStorageFacade: Symbol.for('TemplateStorageFacade'),
 } as const;

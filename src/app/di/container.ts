@@ -3,6 +3,7 @@ import 'reflect-metadata';
 import { container } from 'tsyringe';
 
 import {
+  registerContextBindings,
   registerControllerBindings,
   registerInfrastructureBindings,
   registerRepositoryBindings,
@@ -12,6 +13,7 @@ import {
 registerControllerBindings(container);
 registerInfrastructureBindings(container);
 registerRepositoryBindings(container);
+registerContextBindings(container);
 registerServiceBindings(container);
 
 export { container };

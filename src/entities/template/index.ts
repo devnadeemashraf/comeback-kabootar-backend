@@ -1,1 +1,1 @@
-export type { Template, TemplateRow } from './template.entity';
+export type { Template, TemplateAttachment, TemplateRow, TemplateStatus } from './template.entity';

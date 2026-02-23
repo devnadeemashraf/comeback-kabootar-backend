@@ -36,6 +36,13 @@ const envSchema = z.object({
   // Connection Pooling
   DATABASE_POOL_MIN: z.coerce.number().default(2),
   DATABASE_POOL_MAX: z.coerce.number().default(10),
+
+  // MinIO (S3-compatible) for template attachments
+  MINIO_ENDPOINT: z.url().optional(),
+  MINIO_BUCKET: z.string().min(1).default('templates'),
+  MINIO_ACCESS_KEY: z.string().default('minioadmin'),
+  MINIO_SECRET_KEY: z.string().default('minioadmin123'),
+  MINIO_USE_SSL: z.coerce.boolean().default(false),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -106,6 +113,14 @@ export const config = {
 
   log: {
     level: validatedEnv.LOG_LEVEL,
+  },
+
+  minio: {
+    endpoint: validatedEnv.MINIO_ENDPOINT ?? 'http://localhost:9000',
+    bucket: validatedEnv.MINIO_BUCKET,
+    accessKey: validatedEnv.MINIO_ACCESS_KEY,
+    secretKey: validatedEnv.MINIO_SECRET_KEY,
+    useSSL: validatedEnv.MINIO_USE_SSL,
   },
 } as const;
 export type AppConfig = typeof config;
